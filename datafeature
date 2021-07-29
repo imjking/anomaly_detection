@@ -1,0 +1,58 @@
+from sklearn import linear_model
+import numpy as np
+import pandas as pd
+def regression(xArr,yArr):
+    xArr=[[item] for item in xArr]
+    clf = linear_model.LinearRegression()
+    clf.fit(xArr, yArr)
+    return clf.coef_[0]
+
+def Lump(xArr,width=10):
+    n = len(xArr); seg = int(n/width)
+    Var=[]
+    for i in range(seg):
+       Var.append(np.var( xArr[i*width:(i+1)*width],ddof=1))
+    return np.var(Var, ddof=1)
+
+def feature(xArr):
+    coln = len(xArr)
+    f = []
+    xArr=pd.Series(xArr)
+    f.append(np.mean(xArr))
+    f.append(np.std(xArr, ddof=1))# / np.mean(xArr))
+    f.append(xArr.quantile(0.75) - xArr.quantile(0.25))
+    # f.append(xArr.skew())
+    # f.append(xArr.kurt())
+    f.append(regression(range(coln), xArr))
+    f.append(Lump(xArr, 10))
+    return f
+
+
+def fmatrix(valuep, ju=40):
+    n = int(len(valuep) / ju)
+    value = np.array(valuep[:(n * ju)]).reshape(n, ju)
+    fm = np.array(feature(value[0, :]))
+    for i in range(1, int(n)):
+        x = value[i, :]
+        fm = np.vstack((fm, feature(x)))
+    return fm
+
+
+def roll_median(x,window,freq):
+    n=len(x)
+    id=range(0,n,freq)
+    i=0
+    rollmedian=[]
+    for i in id:
+        segdata=x[i:(i+window)]
+        rollmedian.append(np.median(segdata))
+    return rollmedian
+def roll_mean(x,window,freq):
+    n=len(x)
+    id=range(0,n,freq)
+    i=0
+    rollmean=[]
+    for i in id:
+        segdata=x[i:(i+window)]
+        rollmean.append(np.mean(segdata))
+    return rollmean
