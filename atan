@@ -1,0 +1,55 @@
+#coding:utf-8
+"""计算曲线的平滑性。
+方法：反正切。以弧度表示，大小在-π/2到π/2之间。π用PI表示。
+代表：两点之间的波动幅度，如果后一点相对前一点变动大，弧度越大。
+结论：当seq=1的时候，cre的标准差结点为：0.006。
+即cre的标准差小于0.006的测点，为平滑曲线，反之为密集波动曲线"""
+import numpy as np
+import math
+import stational_lines as sl
+def rad(x,y,b):
+    return math.atan((x-y)/float(b))
+def ts_rad(ts,seq=1):
+    length=len(ts)
+    return [rad(ts[i+seq],ts[i],b=seq) for i in range(length-seq)]
+
+def ts_scale(ts,axis):
+    ts=np.array(ts).astype(float)
+    xm=np.mean(ts)
+    xsd=np.std(ts)
+    return (ts-xm)/xsd
+
+
+# import processingwork.mysqldata as mydata
+import postgresqldata as mydata
+import matplotlib.pyplot as plt
+import pandas as pd
+if __name__=="__main__":
+    # names = mydata.pointInfo("seg_a")#直接从表中获取，表大则慢
+    names=mydata.pinfoSelect('pname_d')#从保存的测点信息表获取
+    name_std = []
+    name_corr=[]
+    classes=[]
+    startime = '2017-12-08 20:00:00'
+    endtime = '2017-12-10 20:00:00'
+    MW_SEL = mydata.dataload('W3.UNIT2.2MW_SEL', datatable="testd", startime=startime, endtime=endtime)
+    for i, name in enumerate(names):
+        value = mydata.dataload(name, datatable="testd",startime=startime,endtime=endtime)
+        name_corr.append(np.corrcoef(np.array(MW_SEL),np.array(value))[0,1])
+        value = ts_scale(value, axis=1)
+        cre = np.std(ts_rad(value, seq=3))
+        name_std.append(cre)
+        if(cre>0.007):
+            p_value = sl.testStationarity(value).ix["p-value", :]
+            if p_value < 0.05:
+                classes.append(2)
+            else: classes.append(1)
+        else:
+            classes.append(0)
+        print("i=",i," name=",name,"  std=",cre," class=",classes[i])
+
+    result=pd.DataFrame({"pname":names,"std": name_std, "cor":name_corr,"class":classes},index=None)
+
+    result.to_csv("data/linear_type_D4.csv")
+
+
