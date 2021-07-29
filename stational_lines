@@ -1,0 +1,26 @@
+#coding:utf-8
+import pandas as pd
+from statsmodels.tsa.stattools import adfuller
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.stats.diagnostic import acorr_ljungbox
+import matplotlib.pyplot as plt
+#单位根检验
+def testStationarity(ts):
+    dftest=adfuller(ts)
+    dfoutput=pd.Series(dftest[0:4],index=['Test Statistic','p-value','#Lags Used','Number of Observations Used'])
+    for key,value in  dftest[4].items():
+        dfoutput["Critical Value (%s)"%key]=value
+    return dfoutput
+#画自相关图，偏自相关图
+def draw_acf_pacf(ts,lags=31):
+    f=plt.figure(facecolor="white")
+    ax1=f.add_subplot(211)
+    plot_acf(ts,lags=31,ax=ax1)
+    ax2 = f.add_subplot(212)
+    plot_pacf(ts,lags=31,ax=ax2)
+    plt.show()
+#白噪声检验
+def testWhiteNoise(ts):
+    return acorr_ljungbox(ts)
+
+
