@@ -1,0 +1,51 @@
+#coding:utf-8
+#使用one-hot理论，将数据分为异常和非异常两类
+from sklearn.covariance import EllipticEnvelope
+from sklearn.svm import OneClassSVM
+import numpy as np
+import matplotlib.pyplot as plt
+def one_hot(test,method,mu=0.005):
+    clf=None
+    if method=="EllipticEnvelope":
+        clf = EllipticEnvelope(support_fraction=1., contamination=mu)
+        # clf=EllipticEnvelope(contamination=mu)
+    elif method=="OneClassSvm":
+        clf = OneClassSVM(nu=mu, gamma=0.1)
+    clf.fit(test)
+    y_hat = clf.predict(test)
+    negetive = np.where(y_hat == -1)[0]
+    postive = np.where(y_hat == 1)[0]
+    return postive,negetive
+
+def one_hot_plot(compress,negetive,postive):
+    plt.plot(compress)
+    neg=[compress[item] for item in negetive]
+    # pos=[test[item] for item in postive]
+    # plt.scatter(postive, pos, c="green")
+    plt.scatter(negetive,neg,c="red")
+    plt.show()
+
+def one_hot_plot2(test,negetive,ju=40):
+    fig=plt.figure(1)
+    plt.plot(test)
+    fig=plt.figure(2)
+    plt.plot(test)
+
+    # for i in negetive:
+    #     neg=[test[item] for item in range((i*ju),ju*(1+i))]
+    #     plt.scatter(range((i*ju),ju*(1+i)),neg,c="red")
+    n = len(test)
+    for i in negetive:
+        if ju*(1+i)<n:
+            neg=[test[item] for item in range((i*ju),ju*(1+i))]
+            plt.scatter(range((i*ju),ju*(1+i)),neg,c="red")
+        else:
+            neg=[test[item] for item in range((i*ju),n)]
+            plt.scatter(range((i*ju),n),neg,c="red")
+
+    plt.show()
+
+
+
+
+
