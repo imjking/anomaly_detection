@@ -1,0 +1,330 @@
+# #coding:utf-8
+import datafeature as df
+import postgresqldata as mydata
+import OutlierDetection as OD
+from sklearn.cluster import KMeans
+from sklearn.cluster import AgglomerativeClustering
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+import transfrom_data as td
+import one_hots as oh
+from math import floor
+from scipy.spatial import distance
+'''need change row266
+   row97 row98
+'''
+
+def calcu_fmatrix(transdata):
+    fm = df.fmatrix(transdata)
+    fmsc = OD.z_score(fm)
+    return fmsc
+
+
+#  层次聚类
+def HClusterDetector(fmsc, n_clusters=7):
+
+    # -----cluster------------
+    connectivity = None
+    linkage = 'ward'
+    model = AgglomerativeClustering(linkage=linkage,
+                                    connectivity=connectivity,
+                                    n_clusters=n_clusters)
+    model.fit(fmsc)
+    cluster = model.labels_
+    count = pd.value_counts(cluster)
+
+    # ---filter lesser cluster--
+    smallcluster = count[count <= 5].index
+    loc = []
+    for num in smallcluster:
+        loc.extend(np.where(cluster == num)[0])
+    return loc
+
+
+# Kmeans聚类
+def kmeansDetector(fmsc, n_clusters, mu=0.002):
+    n = len(fmsc)
+    dist = [0]*n
+    # 假如我要构造一个聚类数为n的聚类器
+    estimator = KMeans(n_clusters=n_clusters)  # 构造聚类器
+    estimator.fit(fmsc)  # 聚类
+    label_pred = estimator.labels_  # 获取聚类标签
+    centroids = estimator.cluster_centers_  # 获取聚类中心
+    centroids = np.array(centroids)
+    fmsc = np.array(fmsc)
+    for i, j in enumerate(label_pred):
+        dist[i] = calEuclideanDistance(fmsc[i, :], centroids[j, :])
+    segment = int(floor(n*mu))
+    dist = np.array(dist)
+    negetive = np.argsort(-dist)[0:segment]
+    return negetive
+
+
+#oneclassSVM
+def OneClassDetector(transdata, mu=0.001):
+    transdata=np.array(transdata)
+    postive, negetive = oh.one_hot(transdata[:,np.newaxis], "EllipticEnvelope",mu=mu)
+    return negetive
+
+
+def calEuclideanDistance(vec1,vec2):
+    dist = np.sqrt(np.sum(np.square(vec1 - vec2)))
+    return dist
+
+
+def MahaDistanceDetector(arr,mu=0.02):
+    n=len(arr)
+    n_outliers=int(floor(n*mu))
+    invA=np.mat(np.cov(arr.T)).I
+    mean=arr.mean(axis=0)
+    m_dist_order = pd.Series([float(distance.mahalanobis(arr[i], mean, invA)**2)
+                        for i in range(len(arr))]).sort_values(ascending=False).index.tolist()
+    return m_dist_order[0:n_outliers]
+
+
+def dataset(pname,table,startime,endtime,trans=2):
+    valuep = mydata.dataload(pname, datatable=table, startime=startime, endtime=endtime)
+    if (trans == 1):
+        transdata = td.r_transform(valuep, 80)
+        arr_data = np.nan_to_num(np.array(transdata[1:(len(transdata) - 2)]))
+        return arr_data
+    else:
+        return valuep
+
+
+def dataset_adjust(pname, table, startime, endtime, trans=2):
+    # valuep = mydata.dataload(pname, datatable=table, startime=startime, endtime=endtime)
+    dataframe = pd.read_csv(r'./mD1227one.csv')
+    valuep = dataframe.iloc[:, [0]]
+    valuep = np.array(valuep)
+    zero_point = np.where(valuep == 0)[0]
+    length = len(valuep)
+    zero_len = len(zero_point)
+
+    if zero_len > (0.45*length):  # 如果有超过45%的值为零，认为数据有错误
+        print("so much zero point")
+        return []
+    elif zero_len > 0:  # 数据中有零
+        loc = zero_point.tolist()
+        loc.extend(range(loc[0] - 150*4, loc[0]))
+        loc.extend(range(loc[len(loc) - 1], loc[len(loc) - 1] + 150*4))
+        new_value = np.delete(valuep, loc)  # 删除了一些数
+        if trans == 1:  # 如果是类型1， 做数据变换
+            transdata = td.r_transform(new_value, 80)  # 80代表滑动窗口
+            arr_data = np.nan_to_num(np.array(transdata[1:(len(transdata) - 2)]))
+            return arr_data
+        else:
+            return new_value
+    else:  # 数据中没零
+        if trans == 1:  # 做数据变换
+            transdata = td.r_transform(valuep, 80)
+            arr_data = np.nan_to_num(np.array(transdata[1:(len(transdata) - 2)]))
+            return arr_data
+        else:
+            return valuep
+
+
+# location:过滤后的时间段  trans:属于类型1还是类型2  n: 数据压缩后的长度
+def getLocation(location, trans, n):
+    loc = [0] * n
+    for j in location:
+        if trans == 1:
+            if j+2 >= n:
+               loc[n-1] = 1
+            else:
+                loc[j+2] = 1
+        else:
+            loc[j] = 1
+    loc_seg = loc[(n - 180):n]
+    print(len(loc_seg), " ", location)
+    if sum(loc_seg) > 0:
+        return loc_seg
+    else:
+        print("no problems!")
+        return []
+
+
+def IntegrateDetectResult(res, element):
+    length = len(res)
+    if length <= 4 or length == 180:
+        print(element)
+        print("not much,no need to cluster !!")
+    else:
+        print('多测点聚类， 假如聚成3类')
+        print('number of anomaly points:', length)
+        print('names of anomaly points:', element)
+        estimator = KMeans(n_clusters=3)  # 构造聚类器
+        estimator.fit(res[1:])  # 聚类
+        label_pred = estimator.labels_  # 获取聚类标签
+        count2 = pd.value_counts(label_pred)
+        print(count2)
+        print("class_0:", np.where(label_pred == 0))
+        print("class_1:", np.where(label_pred == 1))
+        print("class_2:", np.where(label_pred == 2))
+        # 为空怎么办?
+        anomaly = []
+        for ii in range(len(count2)):
+            if count2[ii] <= 10:
+                index1 = count2.index[ii]
+                class_choose = np.where(label_pred == index1)[0].tolist()
+                for jj in range(len(class_choose)):
+                    anomaly.append(element[class_choose[jj]])
+        return anomaly
+
+# 几种方法做聚类，然后把他们extend，然后若出现的次数大于m，把次此时间段输出，当做异常时间段
+def resultfilter(dict1, n, m=3):
+    res=[]
+    for v in dict1.values():
+        for item in v:
+            if item-4 < 0:
+                res.extend(range(0, item + 5))
+            elif item+5 >= n-1:
+                res.extend(range(item - 4, n))
+            else:
+                res.extend(range(item-4, item+5))
+    res_set = set(res)
+    dict1 = {}
+    for item in res_set:
+        dict1.update({item: res.count(item)})
+    return list({k for k, v in dict1.items() if k < n and v >= m})
+
+
+def finalIntegrate():
+    startime = '2017-12-02 20:00:00'
+    endtime = '2017-12-04 20:00:00'
+    table = 'testd'
+    data = pd.read_csv("D:/Python_Workspace/anomaly/linear_type_classifer/data/curve_types_d_finally4.csv")
+    print(len(data))
+    res = np.array([0] * 180)
+    res_element = []
+    for i in range(82):
+        pname = data.ix[i, 0]
+        k = data.ix[i, 9]
+        if k != 0 and k != 3:
+            # -------step0:download data-----
+            print("i=", i, "pname=", pname, " type=", k)
+            valuep = dataset(pname, table, startime=startime, endtime=endtime, trans=k)
+            # -----step1/2:computer location------
+            fmsc = calcu_fmatrix(valuep)
+            # loc = singerDetect(fmsc, 7)
+            loc = kmeansDetector(fmsc, 2)
+            # loc=OneClass(compress)
+            # ----step3:cumpute std and filter----
+            loc_adjust=[]
+            for item in loc:
+                loc_adjust.extend(range(item-3,item+4))
+
+            compress = df.roll_median(valuep, 40, 40)
+            len_compress=len(compress)
+            std1 = np.std(compress)
+            std2 = np.std([compress[i] for i in range(len_compress) if i not in loc_adjust])
+            dif_std= 100 * (std1 - std2) / std1
+            print(std1, "  ", std2, "  ",dif_std)
+            if(dif_std>10):
+                 location=getLocation(loc,k,len_compress)
+                 if(len(location)==0):
+                     continue
+                 else:
+                     res = np.vstack((res, location))
+                     res_element.append(pname)
+    IntegrateDetectResult(res, res_element)
+
+
+def finalIntegrate2():
+    startime = '2017-12-14 08:00:00'
+    endtime = '2017-12-16 08:00:00'
+    table = 'testa'
+    data = pd.read_csv(r"C:\Users\jiakang\Desktop\data\curve_type_scope_A.csv")
+    n = len(data)
+    res = np.array([0] * 180)
+    res_element = []
+    for i in range(n):
+        pname_data = data.iloc[i][["pname", "class_adjust", "max75", "min25", "med"]]
+        parameters = pname_data.values
+        pname = parameters[0]
+        k = parameters[1]
+        if k != 0 and k != 3:  # 1和3的情况不考虑
+            # -------step0:download data-----
+            print("i=", i, "pname=", pname, " type=", k)
+            valuep = dataset_adjust(pname, table, startime=startime, endtime=endtime, trans=k)  # 下载数据
+            compress = df.roll_mean(valuep, 40, 40)  # 数据压缩
+            len_compress = len(compress)
+            # -----step1/2:computer location------
+            fmsc = calcu_fmatrix(valuep)  # 特征提取 shape: (len(value) / 40) * 5  40-滑动窗口 5-特征个数
+            loc1 = kmeansDetector(fmsc, 3, mu=0.002)
+            loc2 = HClusterDetector(fmsc, 7)
+            loc3 = OneClassDetector(compress, mu=0.004)
+            loc4 = MahaDistanceDetector(fmsc)
+            dict1 = {"loc1": loc1, "loc2": loc2, "loc3": loc3, "loc4": loc4}
+            loc = resultfilter(dict1, len_compress, 2)  # 状态过滤
+            # ----step3:cumpute std and filter----
+            loc_adjust=[]
+            for item in loc:
+                loc_adjust.extend(range(item-3, item+4))
+
+            std1 = np.std(compress)
+            std2 = np.std([compress[i] for i in range(len_compress) if i not in loc_adjust])
+            dif_std = 10000 * (std1 - std2) / std1
+            print(std1, "  ", std2, "  ", dif_std)
+            if dif_std > 10:
+                location = getLocation(loc, k, len_compress)  # 取最后180个时间段？
+                if len(location) == 0:
+                    pass
+                else:
+                    res = np.vstack((res, location))
+                    res_element.append(pname)
+    anomaly = IntegrateDetectResult(res, res_element)
+
+    with open('anomaly_point.txt', 'a') as f:
+        f.write(endtime + '\n')
+        for data in anomaly:
+            f.write(data + '   ')
+        f.write('\n' '\n')
+        f.close()
+
+
+def forsinger(i=79):
+    startime = '2017-12-02 14:00:00'
+    endtime = '2017-12-04 14:00:00'
+    table = 'testd'
+    data = pd.read_csv("D:/Python_Workspace/anomaly/linear_type_classifer/data/curve_type_scope_A.csv")
+    print(len(data))
+    pname = data.ix[i, 0]
+    k = data.ix[i, 9]
+    valuep = dataset(pname, table, startime=startime, endtime=endtime, trans=k)
+    compress = df.roll_mean(valuep, 40, 40)
+    # -----step1/2:computer location------
+    fmsc = calcu_fmatrix(valuep)
+    loc = kmeansDetector(fmsc, 3, mu=0.002)
+    loc2 = HClusterDetector(fmsc, 7)
+    loc3 = OneClassDetector(compress, mu=0.004)
+    loc4 = MahaDistanceDetector(fmsc)
+    # ----step3:cumpute std and filter----
+    loc_adjust = []
+    for item in loc:
+        loc_adjust.extend(range(item - 3, item + 4))
+
+    compress = df.roll_median(valuep, 40, 40)
+    len_compress = len(compress)
+    std1 = np.std(compress)
+    std2 = np.std([compress[i] for i in range(len_compress) if i not in loc_adjust])
+    dif_std = 100 * (std1 - std2) / std1
+    print(std1, "  ", std2, "  ", dif_std)
+
+    # -------step4:plot---------
+    fig=plt.figure(1)
+    ax1 = fig.add_subplot(2, 1, 1)
+    plt.plot(valuep)
+    ax2 = fig.add_subplot(2, 1, 2)
+    plt.plot(compress)
+    plt.scatter(loc, [compress[item] for item in loc], color="red")
+    plt.show()
+
+
+if __name__ == "__main__":
+    finalIntegrate2()
+    # forsinger(62)
+
+
+
