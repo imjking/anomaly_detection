@@ -1,0 +1,74 @@
+import psycopg2
+
+def dataload(pname,datatable='testaa',startime='2017-12-04 14:00:00',endtime='2017-12-06 14:00:00'):
+    conn = psycopg2.connect(
+        database="test",
+        user="postgres",
+        password="postgres",
+        host="10.121.55.11",
+        port="5432")
+
+    cur = conn.cursor()
+    cur.execute("select globalname,value,tm from " + datatable + " where tm>='"+startime+"' and tm<'"+endtime+"'and globalname='" + pname + "'")
+    info = cur.fetchall()
+    valuep = []
+    for ii in info:
+        # print ii[1]
+        valuep.append(float(ii[1]))
+    cur.close()
+    conn.commit()
+    conn.close()
+    return valuep
+
+def pointInfo(datatable="seg_a"):
+    conn = psycopg2.connect(
+        database="test",
+        user="postgres",
+        password="postgres",
+        host="10.121.55.11",
+        port="5432")
+
+    cur = conn.cursor()
+    cur.execute("select distinct globalname from "+datatable+";")
+
+    info = cur.fetchall()
+    pointnames = []
+    for ii in info:
+        pointnames.append(ii[0])
+    cur.close()
+    conn.commit()
+    conn.close()
+    return pointnames
+
+def pinfoSelect(table):
+    conn = psycopg2.connect(
+        database="test",
+        user="postgres",
+        password="postgres",
+        host="10.121.55.11",
+        port="5432")
+
+    cur = conn.cursor()
+    cur.execute("select globalname from " + table + ";")
+
+    info = cur.fetchall()
+    pointnames = []
+    for ii in info:
+        pointnames.append(ii[0])
+    cur.close()
+    conn.commit()
+    conn.close()
+    return pointnames
+
+
+import matplotlib.pyplot as plt
+if __name__=="__main__":
+    # pnames=pointInfo()
+    pnames=pinfoSelect("pname_d")
+    value=dataload(pnames[13],datatable='testd')
+    plt.plot(value)
+    plt.show()
+
+
+
+
