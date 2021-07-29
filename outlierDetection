@@ -1,0 +1,73 @@
+# -*- coding: UTF-8 -*-
+import os
+import pandas as pd
+import json
+import numpy as np
+from sklearn.cluster import AgglomerativeClustering
+import datafeature as df
+# 批量下载数据
+def loadDataSet(path):
+    listname=os.listdir(path)
+    data = pd.DataFrame()
+    for item in listname[:10]:
+        with open(path+"/"+item) as temp:
+            json_dict = json.load(temp)
+        temp.close()
+        te = pd.DataFrame([[d["globalname"], d["value"], d["tm"]] for d in json_dict],
+                          columns=["globalname", "value", "tm"])
+        data = pd.concat([data, te], ignore_index=True)
+    return data
+
+def mutiDetection(data):
+    grouped=data["value"].groupby(data["globalname"])
+    groups=[]
+    outmatrix=pd.DataFrame()
+    for key,group in grouped:
+        groups.append(key)
+        outmatrix[key]=outofsinger(group)
+    n=outmatrix.shape[0]
+    outmatrix=outmatrix[(n-180):n]
+    outm=outmatrix.T
+    cluster = AgglomerativeClustering(n_clusters=7, linkage='ward').fit_predict(outm)
+    out = cluster.copy()
+    count = pd.value_counts(cluster)
+    outpoint=np.array([])
+    for key in count.index:
+        if count.loc[key] < 2:
+            outpoint = np.hstack((np.where(cluster == key)[0], outpoint))
+    return [groups[int(item)] for item in outpoint]
+
+def outofsinger(xArr,ju=40):
+    coln=len(xArr)/ju
+    fm=df.fmatrix(xArr,ju)
+    fmsc=pd.DataFrame(z_score(fm))
+    cluster=AgglomerativeClustering(n_clusters=30, linkage='ward').fit_predict(fmsc)
+    out=cluster.copy()
+    count=pd.value_counts(cluster)
+    for key in count.index:
+        if count[key]<2:
+            out[out==key]=1
+        else:
+            out[out==key]=0
+
+    stepwidth=1
+    block=5
+    timestart=range(0,coln-block+1,stepwidth)
+    for i in timestart:
+        if sum(out[i:(i+block)])<2:
+            out[i:(i+block)]=0
+    return out
+
+
+def z_score(x, axis=0):
+    xr = np.rollaxis(x, axis=axis)
+    xr -= np.mean(x, axis=axis)
+    xr /= np.std(x, axis=axis)
+    return x
+import matplotlib.pyplot as plt
+def plot_for_one(out,valuep,ju=40):
+    plt.plot(valuep)
+    for point in out:
+        temp=[valuep[p] for p in range(point,point+ju)]
+        plt.scatter(range(point,point+ju),temp,col='red')
+
